@@ -4,7 +4,7 @@ morsel — a really, really tiny LLM with no attention
 This is the tranformer version of morsel.
 
 Usage:
-    python morseltransformer.py <textfile> "your prompt here"
+    python morseltransformer.py <textfile> "prompt"
 
 Example:
     python morseltransformer.py tinyshakespeare.txt "ROMEO:"
@@ -16,6 +16,17 @@ License: MIT
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import sys
+
+torch.set_float32_matmul_precision("high")
+
+if len(sys.argv) < 3:
+    print("  morseltransformer — tiny GPT baseline")
+    print('  Usage: python morseltransformer.py <textfile> "prompt"')
+    sys.exit(1)
+
+data_file = sys.argv[1]
+prompt = " ".join(sys.argv[2:])
 
 # hyperparameters
 batch_size = 64
@@ -31,7 +42,8 @@ n_layer = 3
 dropout = 0.1
 
 # dataset
-text = open('tinyshakespeare.txt', 'r').read()
+with open(data_file, 'r', encoding='utf-8') as f:
+    text = f.read()
 chars = sorted(list(set(text)))
 vocab_size = len(chars)
 
@@ -154,12 +166,25 @@ class GPT(nn.Module):
 model = GPT().to(device)
 print(sum(p.numel() for p in model.parameters())/1e6, "M parameters")
 
+# Compile only the training graph. Generation has changing sequence lengths,
+# which can trigger recompiles and reduce/erase speed gains.
+train_model = model
+compile_enabled = False
+if hasattr(torch, 'compile'):
+    try:
+        train_model = torch.compile(model)
+        compile_enabled = True
+    except Exception as e:
+        print(f"torch.compile unavailable, using eager mode: {e}")
+
+print(f"torch.compile: {'enabled' if compile_enabled else 'disabled'}")
+
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
 for iter in range(max_iters):
 
     xb,yb = get_batch('train')
-    logits, loss = model(xb, yb)
+    logits, loss = train_model(xb, yb)
 
     optimizer.zero_grad()
     loss.backward()
@@ -168,5 +193,11 @@ for iter in range(max_iters):
     if iter % eval_interval == 0:
         print(iter, loss.item())
 
-context = torch.zeros((1,1), dtype=torch.long, device=device)
-print(decode(model.generate(context, 300)[0].tolist()))
+unknown_chars = sorted(set(ch for ch in prompt if ch not in stoi))
+if unknown_chars:
+    print(f"Prompt contains chars not in training text vocabulary: {unknown_chars}")
+    sys.exit(1)
+
+prompt_ids = torch.tensor([encode(prompt)], dtype=torch.long, device=device)
+generated_ids = model.generate(prompt_ids, 300)[0].tolist()
+print(prompt + decode(generated_ids[len(prompt_ids[0]):]))
