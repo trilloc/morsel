@@ -15,7 +15,7 @@ Usage:
     python morsel.py <textfile> "your prompt here"
 
 Example:
-    python morsel.py shakespeare.txt "ROMEO:"
+    python morsel.py tinyshakespeare.txt "ROMEO:"
 
 Author:  @raskal Rajesh Bhaskar
 License: MIT
@@ -36,7 +36,7 @@ ML   = 4      # MLP expansion factor
 S    = 128    # context window length
 BS   = 16      # mini-batch size
 LR   = 1e-3   # Adam learning rate
-STEPS = 5000  # training steps
+STEPS = 25000  # training steps
 
 # ── EMA: The Attention Replacement ───────────────────────────────────────────
 # Where a Transformer does:  Attention(Q, K, V) = softmax(QKᵀ/√d)V   — O(n²)
